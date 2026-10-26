@@ -1,0 +1,100 @@
+{
+  "paths": {
+    "dataset": "data/ver1/set",
+    "features": "data/ver1/features",
+    "run": "models/ver1"
+  },
+  "classes": [
+    "Shree",
+    "Jog",
+    "Miyan Malhar",
+    "Lalit",
+    "Todi",
+    "Marwa",
+    "Bhairavi"
+  ],
+  "audio": {
+    "sample_rate": 22050,
+    "window_seconds": 30,
+    "stride_seconds": 15,
+    "first_start_seconds": -15,
+    "rms_dbfs": -20,
+    "max_gain_db": 20,
+    "peak_ceiling": 0.99,
+    "silence_rms": 1e-05,
+    "decode_block_samples": 65536
+  },
+  "tonic": {
+    "sampleRate": 44100,
+    "minTonicFrequency": 65,
+    "maxTonicFrequency": 500,
+    "frameSize": 2048,
+    "hopSize": 512,
+    "binResolution": 10,
+    "numberHarmonics": 20,
+    "harmonicWeight": 0.85,
+    "magnitudeCompression": 1,
+    "magnitudeThreshold": 40,
+    "numberSaliencePeaks": 5,
+    "referenceFrequency": 55
+  },
+  "spectrogram": {
+    "n_fft": 8192,
+    "win_length": 8192,
+    "hop_length": 512,
+    "window": "hann",
+    "center": true,
+    "min_cents": -1200,
+    "max_cents_exclusive": 4800,
+    "step_cents": 25,
+    "dynamic_range_db": 80,
+    "epsilon": 1e-12
+  },
+  "model": {
+    "channels": [
+      16,
+      32,
+      64
+    ],
+    "kernels": [
+      [
+        3,
+        7
+      ],
+      [
+        5,
+        5
+      ],
+      [
+        3,
+        3
+      ]
+    ],
+    "pool": [
+      2,
+      4
+    ],
+    "adaptive_pool": [
+      12,
+      1
+    ],
+    "dropout": 0.25
+  },
+  "training": {
+    "device": "cuda",
+    "epochs": 30,
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "betas": [
+      0.9,
+      0.999
+    ],
+    "epsilon": 1e-08,
+    "seed": 42,
+    "workers": 0
+  },
+  "inference": {
+    "batch_size": 8
+  }
+}

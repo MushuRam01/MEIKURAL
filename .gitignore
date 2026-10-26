@@ -2,7 +2,12 @@
 venv/
 data/
 outputs/
-models/
+/models/*
+!/models/ver1/
+/models/ver1/*
+!/models/ver1/latest.pt
+!/models/ver1/config.json
+!/models/ver1/history.json
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/

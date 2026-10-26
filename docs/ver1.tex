@@ -248,8 +248,13 @@ Features and manifests are published using temporary files and rename. An
 interrupted incomplete preparation is rebuilt on the next matching run; it does
 not silently become training-ready. The source and cache directories must be
 separate and non-nested. Decode failures stop preparation. No intermediate audio
-files are required. Ignored \path{data/} and \path{models/} directories hold large
-generated artifacts outside Git.
+files are required. The \path{data/} directory and unselected model runs remain
+ignored. Git explicitly permits the small trained \path{models/ver1/latest.pt}
+checkpoint and its config/history JSON files for laptop inference. They can be
+committed without the training dataset or feature cache. The checkpoint loads on
+CPU even when trained on CUDA; inference device selection is independent of the
+saved training device. The README documents installation on a Linux CPU laptop
+using the unified dependencies with the workstation Torch pin excluded.
 
 \section{CNN mathematics and dimensions}
 Input batches have shape $(B,1,240,1292)$. Every block applies biased stride-one
@@ -358,6 +363,30 @@ receive scores among these seven classes. Short clips can be ambiguous; tonic
 octave errors shift features by 1200 cents, and a successful estimator can still
 be wrong. Accompaniment, artist identity, and recording conditions can become CNN
 shortcuts. Many overlapping windows do not create new independent recordings.
+
+\subsection{Interactive single-passage inference}
+\path{notebooks/03_ver1_interactive_clip.ipynb} offers a start-time slider,
+an exact-seconds field, audio playback, and an explicit prediction button.
+The widget dependency is included in the unified requirements. Loading a song
+decodes it once at the checkpoint sample rate and caches mono float32 audio in
+RAM; this trades memory for responsive seeking. Very long recordings should
+use a disk-backed approach in a future extension. The model and tonic estimator
+are also reused between selections.
+
+For selected start $s\ge0$, compute $a=\operatorname{round}(sf_s)$, take samples
+$x[a:\min(a+L,N)]$, and right-pad to $L$ if necessary. No left-padding window
+or whole-song aggregation is generated. The slider allows complete windows when
+the song is at least $L/f_s$ seconds long; shorter songs use start zero and right
+padding. Playback contains only the real selected samples. Normalization, tonic
+estimation excluding padding, STFT remapping, and float16 quantization match
+training. A single model forward pass yields the seven softmax scores.
+
+Changing the selection clears stale output without running inference. Changing
+either path invalidates the loaded state and requires another load. Errors and
+unusable passages are shown beside the controls. Selecting a vocal passage is
+not source separation: accompaniment is retained and tonic errors remain possible.
+Interactive choices used to guide changes are development data, not an independent
+final test. A static HTML export cannot execute the Python prediction pipeline.
 
 \section{Verification and experiment status}
 Automated checks cover exact window boundaries; gain limits and silence;

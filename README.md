@@ -12,6 +12,7 @@ by the project owner will be evaluated separately.
 - `src/ver1/`: tonic-aligned STFT features, a small CNN, and audio-only inference.
 - `docs/ver1.tex`: mathematical and implementation reference, including CNN dimensions.
 - `notebooks/02_ver1_inference.ipynb`: infer from an audio file of any positive duration.
+- `notebooks/03_ver1_interactive_clip.ipynb`: listen to and classify a chosen 30-second passage.
 
 ## Version 1
 
@@ -153,6 +154,76 @@ Alternatively, replace the example audio path and use the terminal:
 ```bash
 python3 -m src.ver1.inference.predict /absolute/path/to/your_audio.wav models/ver1/latest.pt
 ```
+
+### Choose a 30-second passage interactively
+
+With `.venv` activated, install the updated requirements and open the clip picker:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 -m jupyterlab notebooks/03_ver1_interactive_clip.ipynb
+```
+
+Select the **Python (MEIKURAL)** kernel and run the cells in order. Enter audio
+and checkpoint paths, click **Load audio**, choose a start time using the slider
+or exact-seconds field, and click **Play selected clip** to listen. Click
+**Predict selected clip** to classify exactly that passage. Moving the slider
+clears old results but never starts inference automatically.
+
+This predicts one selected window, without the whole-song notebook's initial
+half-padded window or averaging other passages. Audio shorter than 30 seconds is
+right-padded. The checkpoint controls duration and preprocessing (30 seconds for
+the Version 1 model). The song is decoded once into RAM for responsive seeking.
+Restart JupyterLab after installing widgets if controls do not appear.
+
+Vocal passages may help isolate the musical material you want to inspect, but
+the model still receives the complete audio spectrum, including accompaniment.
+Selecting vocals does not separate the singer or correct a wrong tonic estimate.
+
+### Share the trained model and infer on a laptop
+
+The trained `models/ver1/latest.pt` checkpoint is approximately 446 KB, so it can
+be committed to ordinary Git without Git LFS. The ignore rules allow this file,
+its `config.json`, and `history.json`; other model runs, datasets, and feature
+caches stay ignored. The checkpoint includes weights, class order, and the saved
+preprocessing configuration. You do not need the Saraga dataset to run inference.
+
+Include these files and ignore-rule changes in your next commit, then push the
+commit before cloning or pulling on the laptop:
+
+```bash
+git add .gitignore .gitattributes models/ver1/latest.pt models/ver1/config.json models/ver1/history.json
+```
+
+For a **Linux laptop without an NVIDIA GPU**, use Python 3.12 and Bash. From the
+cloned repository directory:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+# Use the same dependency file, excluding only the workstation Torch/index lines.
+python3 -m pip install -r <(sed '/^torch==/d; /^--extra-index-url /d' requirements.txt)
+python3 -m src.ver1.inference.predict /absolute/path/to/your_audio.mp3 models/ver1/latest.pt --device cpu
+```
+
+The process-substitution command above requires Bash. It keeps one requirements
+file while avoiding installation of the workstation CUDA build on a CPU laptop.
+FFmpeg and FFprobe must be installed separately for fallback audio decoding.
+No feature preparation or training is needed. Saved CUDA weights can load on CPU;
+the saved training device does not force inference onto CUDA.
+
+For the interactive notebook, register the laptop environment and launch:
+
+```bash
+python3 -m ipykernel install --user --name meikural --display-name "Python (MEIKURAL)"
+python3 -m jupyterlab notebooks/03_ver1_interactive_clip.ipynb
+```
+
+Select **Python (MEIKURAL)**, set the laptop's audio path, and keep the checkpoint
+path at `models/ver1/latest.pt`. Notebook inference selects CPU automatically when
+CUDA is unavailable. Laptop audio stays local; only explicitly committed files
+are transferred through Git. CPU inference will generally be slower than GPU.
 
 ### Optional: regenerate mathematical documentation
 
