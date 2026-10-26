@@ -53,14 +53,14 @@ and development dependencies from the single requirements file:
 .venv/bin/python -m pip install -r requirements.txt
 \end{lstlisting}
 Project dependencies are pinned; pip resolves their transitive dependencies.
-Torch is not constrained to a CPU-only build. An existing CPU-only Torch 2.9.0
-installation satisfies the requirement and will not automatically be replaced.
-To replace it with CUDA 12.6 wheels for a compatible NVIDIA driver:
+The unified requirements select \texttt{torch==2.9.0+cu126} from the CUDA 12.6
+index, replacing any previously installed CPU-only build. To update only Torch:
 \begin{lstlisting}
-.venv/bin/python -m pip install --force-reinstall torch==2.9.0 \
+.venv/bin/python -m pip install torch==2.9.0+cu126 \
     --index-url https://download.pytorch.org/whl/cu126
 \end{lstlisting}
-Device selection still falls back to CPU when CUDA is unavailable.
+Training defaults to explicit CUDA and fails if CUDA is unavailable. CPU mode and
+automatic fallback remain available through explicit configuration changes.
 No torchvision or torchaudio dependency is required. FFmpeg and FFprobe must be
 on PATH for codecs not handled by libsndfile. Essentia's Python wheel is pinned
 to 2.1b6.dev1389; its upstream license is AGPL-3.0-only.
@@ -333,8 +333,9 @@ weights with PyTorch's restricted weights-only loader, and switches to evaluatio
 mode. A current JSON edit cannot silently change an existing checkpoint's model.
 
 \section{Devices, inference aggregation, and interpretation}
-With device \texttt{auto}, choose CUDA only if PyTorch reports it available;
-otherwise use CPU. Explicit \texttt{cuda} fails clearly if unavailable. Feature
+The default training device is \texttt{cuda}, which fails clearly if unavailable.
+With optional device \texttt{auto}, choose CUDA only if PyTorch reports it
+available; otherwise use CPU. Explicit \texttt{cpu} always uses CPU. Feature
 preparation remains on CPU. A CUDA checkpoint can load on CPU. Runtime failures
 and GPU out-of-memory errors propagate; training is not silently restarted.
 

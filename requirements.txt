@@ -1,3 +1,6 @@
+# NVIDIA workstation build; this Torch build can also execute on CPU.
+--extra-index-url https://download.pytorch.org/whl/cu126
+
 # Audio processing, dataset access, and training
 mirdata==1.0.0
 numpy==2.5.4
@@ -12,7 +15,7 @@ docopt==0.6.2
 joblib==1.6.0
 psutil==7.2.2
 essentia==2.1b6.dev1389
-torch==2.9.0
+torch==2.9.0+cu126
 
 # Notebook authoring and execution
 jupyterlab==4.6.4

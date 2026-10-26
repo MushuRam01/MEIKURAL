@@ -70,3 +70,12 @@ external validation, or external testing was performed. GPU execution was not
 verified: `nvidia-smi` could not communicate with the driver in this session.
 CPU execution and automatic fallback were verified. External dataset ingestion,
 unknown-raag rejection, and score calibration are outside this implementation.
+
+### GPU setup follow-up
+
+An unsandboxed `nvidia-smi` check confirmed the RTX 4070 (12 GB) and NVIDIA driver
+580.173.02 are working. The project environment still contained Torch 2.9.0+cpu,
+which explains the CPU training run despite working hardware. Requirements now
+pin `torch==2.9.0+cu126`; training defaults to explicit `cuda` so it fails rather
+than silently falling back. CPU and `auto` remain selectable. The CUDA package
+installation and actual GPU training are user-run; no training was restarted.

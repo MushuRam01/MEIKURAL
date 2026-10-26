@@ -40,26 +40,28 @@ dependencies automatically. It includes audio processing, training, notebook,
 and development tools. FFmpeg and FFprobe are system programs needed for codecs
 not handled by libsndfile. LaTeX is needed only to compile the documentation.
 
-**2. Check whether GPU training is available.**
+**2. Verify that Torch can use the RTX 4070 before training.**
 
 ```bash
 nvidia-smi
-python3 -c "import torch; print('Torch:', torch.__version__); print('CUDA available:', torch.cuda.is_available())"
+python3 -c "import torch; print('Torch:', torch.__version__); print('CUDA build:', torch.version.cuda); assert torch.cuda.is_available(), 'CUDA unavailable: do not start training'; print('GPU:', torch.cuda.get_device_name(0))"
 ```
 
-The current environment was verified with CPU-only Torch. Installing the unified
-requirements alone does not replace that build. If `nvidia-smi` works and you
-want GPU training, install the CUDA build below, then repeat the Python check.
-The CUDA 12.6 wheels require a compatible NVIDIA driver.
+The requirements explicitly pin `torch==2.9.0+cu126`, so installing them replaces
+an existing CPU-only Torch build. The CUDA 12.6 wheels work with this workstation's
+NVIDIA driver. A working `nvidia-smi` confirms driver access, but Torch must also
+pass the Python check above. To install just the corrected Torch build:
 
 ```bash
-python3 -m pip install --force-reinstall torch==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+python3 -m pip install torch==2.9.0+cu126 --index-url https://download.pytorch.org/whl/cu126
 ```
 
-If `nvidia-smi` fails, fix the driver/access issue before expecting GPU training;
-installing a Torch wheel does not fix the driver. You may continue on CPU.
-With `training.device` set to `"auto"`, training chooses CUDA when available and
-otherwise CPU. Feature preparation runs on CPU in either case.
+Training defaults to `training.device: "cuda"` and fails immediately if CUDA is
+unavailable; it cannot silently switch to CPU. If you deliberately want CPU
+training, set this to `"cpu"`. `"auto"` remains available for automatic CPU fallback.
+Feature preparation and loading cached arrays still use CPU; the CNN and its
+training batches run on CUDA. Driver access must also be available inside any
+container or sandbox used to launch training.
 
 **3. Review `src/ver1/config.json`.**
 
@@ -72,7 +74,7 @@ starting:
 | `paths.dataset` | `data/ver1/set` | All selected training recordings |
 | `paths.features` | `data/ver1/features` | Generated feature cache |
 | `paths.run` | `models/ver1` | Checkpoint and training history |
-| `training.device` | `auto` | CUDA when available, otherwise CPU |
+| `training.device` | `cuda` | Require CUDA; fail instead of silently using CPU |
 | `training.batch_size` | `8` | Reduce if GPU memory is insufficient |
 | `training.epochs` | `30` | Fixed training duration; no internal validation |
 
@@ -120,6 +122,10 @@ This uses all usable training windows, prints the selected device, and saves
 `models/ver1/latest.pt`, `history.json`, and a configuration snapshot. Wait for
 all configured epochs to finish. Loss and accuracy are **training metrics**;
 external validation and testing have not been supplied yet.
+
+The startup line must say `on cuda`. If you previously killed a CPU run, keep
+the prepared feature cache; it is independent of training device. If that run
+saved `latest.pt`, change `paths.run` to a fresh directory before starting again.
 
 An existing checkpoint is protected against overwrite. Choose a new `paths.run`
 for a new experiment; automatic resume is not implemented.
