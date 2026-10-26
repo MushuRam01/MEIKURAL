@@ -1,0 +1,10 @@
+Version1 
+| Raag | Audio | Recordings | Credited artists |
+|---|---:|---:|---:|
+| Shree | 4.46 h | 5 | 4 |
+| Jog | 2.25 h | 3 | 3 |
+| Miyan Malhar | 2.04 h | 3 | 3 |
+| Lalit | 1.79 h | 3 | 3 |
+| Todi | 1.63 h | 3 | 3 |
+| Marwa | 1.21 h | 3 | 3 |
+| Bhairavi | 1.04 h | 5 | 4 |

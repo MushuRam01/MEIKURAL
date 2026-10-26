@@ -1,0 +1,16 @@
+.venv/
+venv/
+data/
+outputs/
+models/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.egg-info/
+.ruff_cache/
