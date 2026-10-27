@@ -388,6 +388,25 @@ not source separation: accompaniment is retained and tonic errors remain possibl
 Interactive choices used to guide changes are development data, not an independent
 final test. A static HTML export cannot execute the Python prediction pipeline.
 
+\subsection{Folder-labelled batch reports}
+\path{notebooks/04_ver1_handpicked_batch.ipynb} applies the existing whole-audio
+prediction function independently to every supported audio file under the test
+collection. The first directory component below the collection root supplies its
+expected label. Case and word separators are normalized against saved model
+classes; the explicit spelling alias \texttt{sree} maps to Shree. Unknown labels
+are preserved, especially Bhairav versus Bhairavi. Folder labels are not inputs
+to inference and are assumed rather than independently validated ground truth.
+
+Each performance produces a single Matplotlib figure containing its relative
+filename, expected and predicted raags, match status, window-score timeline,
+and ranked overall scores. The ranking is taken directly from the existing
+real-duration-weighted inference result, with no pooling between performances.
+Failed windows leave timeline gaps. Failed recordings and recordings with no
+usable windows produce explanatory figures. PNG files mirror the input folder
+structure under \path{outputs/ver1/handpicked}; reruns replace report images,
+not source audio. A predicted raag here is one of the seven classes, not a
+separate family or thaat classification.
+
 \section{Verification and experiment status}
 Automated checks cover exact window boundaries; gain limits and silence;
 relative-pitch alignment for synthetic tones with different tonics; finite matrix

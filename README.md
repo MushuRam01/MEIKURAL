@@ -13,6 +13,7 @@ by the project owner will be evaluated separately.
 - `docs/ver1.tex`: mathematical and implementation reference, including CNN dimensions.
 - `notebooks/02_ver1_inference.ipynb`: infer from an audio file of any positive duration.
 - `notebooks/03_ver1_interactive_clip.ipynb`: listen to and classify a chosen 30-second passage.
+- `notebooks/04_ver1_handpicked_batch.ipynb`: one combined score timeline/ranking image per handpicked recording.
 
 ## Version 1
 
@@ -179,6 +180,28 @@ Restart JupyterLab after installing widgets if controls do not appear.
 Vocal passages may help isolate the musical material you want to inspect, but
 the model still receives the complete audio spectrum, including accompaniment.
 Selecting vocals does not separate the singer or correct a wrong tonic estimate.
+
+### Report every handpicked performance
+
+With `.venv` activated, launch:
+
+```bash
+python3 -m jupyterlab notebooks/04_ver1_handpicked_batch.ipynb
+```
+
+Select **Python (MEIKURAL)** and run the cells in order. The defaults scan all
+supported audio files recursively under `data/test_ver1_handpicked/`, using the
+first folder below it as the correct raag label. Review the file list before
+running the batch cell. `sree` maps to `Shree`, and `miyan_malhar` to `Miyan Malhar`;
+unknown folders remain distinct, including `bhairav` versus `Bhairavi`.
+
+For each recording, one Matplotlib image contains the filename, correct raag,
+predicted raag, match status, seven-score timeline, and full duration-weighted
+overall ranking. The shared inference function supplies the same weighted mean
+as notebook 02. Each image is displayed inline and saved under
+`outputs/ver1/handpicked/<raag-folder>/<audio-filename>.png`. No recordings are
+pooled together. Failed recordings receive an error image without stopping the
+remaining batch. Rerunning overwrites the corresponding report PNGs, not audio.
 
 ### Share the trained model and infer on a laptop
 
