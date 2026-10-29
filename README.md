@@ -15,6 +15,103 @@ by the project owner will be evaluated separately.
 - `notebooks/03_ver1_interactive_clip.ipynb`: listen to and classify a chosen 30-second passage.
 - `notebooks/04_ver1_handpicked_batch.ipynb`: one combined score timeline/ranking image per handpicked recording.
 
+## Shared raw test audio for every version
+
+All single-performance, interactive, and batch inference notebooks use one raw
+test collection: **`data/test_ver1_handpicked/`**. Add recordings beneath their
+raag folder, including `marwa/`; all three versions discover them automatically
+when their recording-list cell runs. No duplicate test datasets are required.
+
+| Version | Single / interactive / batch notebooks | Checkpoint | Batch outputs |
+|---|---|---|---|
+| 1 | `02` / `03` / `04` | `models/ver1/latest.pt` | `outputs/ver1/handpicked/` |
+| 2 | `05` / `06` / `07` | `models/ver2/latest.pt` | `outputs/ver2/handpicked/` |
+| 3 | `08` / `09` / `10` | `models/ver3/latest.pt` | `outputs/ver3/handpicked/` |
+
+After adding files, restart the chosen notebook's kernel and **Run All** to refresh
+file discovery, predictions, and both confusion matrices. Previously saved figures
+remain historical until rerun. Single and interactive examples also resolve their
+audio paths beneath this shared root. Training datasets and feature caches remain
+at their existing version-specific paths; test audio is not added to training.
+
+## Version 3 — native STFT, no tonic estimation
+
+Version 3 retains mono/resampling, 30-second windows, 15-second stride, RMS
+normalization, gain limits, peak protection, silence handling, and zero padding.
+It skips **all tonic finding and frequency-axis manipulation**. Every native STFT
+bin is retained: the default input is **4,097 × 1,292**, without image resizing.
+Log intensity compression and float16 feature caching are retained.
+
+The CNN is larger: **32/64/128 filters**, a **256-unit hidden classifier**, and
+**521,095 parameters**. The current training batch size is **2**; inference uses
+**1**. Epochs remain 30, with CUDA required for training. Class weights also work
+at batch one. All settings are in `src/ver3/config.json`.
+
+| Purpose | Location |
+|---|---|
+| Selected raw training recordings | `data/ver3/set/<raag>/...` |
+| Native-STFT cache | `data/ver3/features/` |
+| New model and history | `models/ver3/` |
+| Shared handpicked test collection | `data/test_ver1_handpicked/` |
+| Batch reports and confusion matrices | `outputs/ver3/handpicked/` |
+| Mathematical reference | `docs/ver3.tex` |
+
+The current Version 3 run completed **30 CUDA epochs** on 3,471 windows, with
+final training loss **0.09984** and training accuracy **96.00%**. The trained model
+is `models/ver3/latest.pt`; these figures are not external test accuracy.
+To prepare and train another experiment, choose a new `paths.run` before training.
+With `.venv` activated and the repository as the working directory:
+
+```bash
+python3 -m src.ver3.preprocessing.copy_raag_folders --dry-run
+python3 -m src.ver3.preprocessing.copy_raag_folders
+python3 -m src.ver3.preprocessing.prepare
+python3 -m src.ver3.training.train
+```
+
+You can point `paths.dataset` at an existing raw collection instead of making
+another audio copy. Feature and model outputs must remain Version 3-specific;
+older features and checkpoints are incompatible. There is no `--diagnose-tonic`
+step or tonic-estimation dependency in this processing path.
+
+Each cached window is about 10.59 MB; a collection with 3,471 windows needs
+approximately **37 GB** for features. The larger CNN also needs more GPU memory
+and compute. Batch two was verified on the RTX 4070; larger batches remain untested.
+
+After training, launch the relevant notebook and select **Python (MEIKURAL)**:
+
+```bash
+python3 -m jupyterlab notebooks/08_ver3_inference.ipynb
+python3 -m jupyterlab notebooks/09_ver3_interactive_clip.ipynb
+python3 -m jupyterlab notebooks/10_ver3_handpicked_batch.ipynb
+```
+
+They use `models/ver3/latest.pt`. The batch notebook reuses the existing test
+collection and includes both confusion matrices. The interactive notebook holds
+the song in RAM for seeking, but computes features only from the selected clip.
+New files and raag folders are discovered when the recording-list cell runs.
+The shared collection currently has **20 recordings**, including **three Marwa
+performances** in `data/test_ver1_handpicked/marwa/`. The existing loader maps that
+folder to the already-trained `Marwa` class automatically. Restart the kernel and
+run all cells in notebook 10 to refresh the list and both confusion matrices;
+adding test recordings does not require retraining.
+
+Regenerate the documented settings and compile the reference:
+
+```bash
+python3 -m src.ver3.documentation.generate
+mkdir -p outputs/ver3/docs
+(cd docs && \
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=../outputs/ver3/docs ver3.tex && \
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=../outputs/ver3/docs ver3.tex)
+```
+
+Run synthetic checks without starting a training loop:
+
+```bash
+python3 -m pytest tests/ver3 -q
+```
+
 ## Version 2 — full-recording tonic
 
 Version 2 estimates Sa **once from the complete recording**, then uses that
@@ -29,7 +126,7 @@ All Version 2 settings live in `src/ver2/config.json`:
 | Purpose | Default location |
 |---|---|
 | Training recordings | `data/ver2/set/<configured-raag>/...` |
-| External handpicked recordings | `data/test_ver2_handpicked/<raag>/...` |
+| Batch notebook's handpicked recordings | `data/test_ver1_handpicked/<raag>/...` (shared comparison collection) |
 | Feature cache | `data/ver2/features/` |
 | Model and training history | `models/ver2/` |
 | Batch reports and confusion matrices | `outputs/ver2/handpicked/` |
@@ -39,9 +136,10 @@ Add performances under the same seven configured raags. You can point
 `paths.dataset` at an existing collection instead of copying it, but always keep
 Version 2 feature/model outputs separate. Optional Saraga annotations are used
 only for tonic diagnostics. There is no internal train/validation/test split.
-To compare versions on the existing test collection, set the new batch notebook's
-`TEST_DIR` to `ROOT / "data/test_ver1_handpicked"`; its default is the new Version 2
-collection. No audio folders have been copied or created automatically.
+The Version 2 batch notebook defaults to the existing `data/test_ver1_handpicked`
+collection so both models can be compared on identical recordings. Change
+`TEST_DIR` in the notebook if you create a separate collection. No audio folders
+are copied or renamed automatically; Version 2 reports still go to `outputs/ver2`.
 
 When the expanded datasets are ready:
 

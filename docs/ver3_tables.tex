@@ -1,0 +1,59 @@
+% Generated from config.json; do not edit numerical defaults here.
+\subsection{Configured settings}
+\begin{longtable}{p{0.49\linewidth}p{0.44\linewidth}}
+\textbf{Setting} & \textbf{Value} \\\hline\endhead
+paths.dataset & "data/ver3/set" \\
+paths.features & "data/ver3/features" \\
+paths.run & "models/ver3" \\
+classes & Shree, Jog, Miyan Malhar, Lalit, Todi, Marwa, Bhairavi \\
+audio.sample\_rate & 22050 \\
+audio.window\_seconds & 30 \\
+audio.stride\_seconds & 15 \\
+audio.first\_start\_seconds & -15 \\
+audio.rms\_dbfs & -20 \\
+audio.max\_gain\_db & 20 \\
+audio.peak\_ceiling & 0.99 \\
+audio.silence\_rms & 1e-05 \\
+audio.decode\_block\_samples & 65536 \\
+spectrogram.n\_fft & 8192 \\
+spectrogram.win\_length & 8192 \\
+spectrogram.hop\_length & 512 \\
+spectrogram.window & "hann" \\
+spectrogram.center & true \\
+spectrogram.dynamic\_range\_db & 80 \\
+spectrogram.epsilon & 1e-12 \\
+model.channels & [32, 64, 128] \\
+model.kernels & [[3, 7], [5, 5], [3, 3]] \\
+model.pool & [2, 4] \\
+model.adaptive\_pool & [12, 1] \\
+model.dropout & 0.25 \\
+model.hidden\_features & 256 \\
+training.device & "cuda" \\
+training.epochs & 30 \\
+training.batch\_size & 2 \\
+training.learning\_rate & 0.001 \\
+training.weight\_decay & 0.0001 \\
+training.betas & [0.9, 0.999] \\
+training.epsilon & 1e-08 \\
+training.seed & 42 \\
+training.workers & 0 \\
+inference.batch\_size & 1 \\
+preprocessing.version & 3 \\
+preprocessing.representation & "stft\_magnitude" \\
+\end{longtable}
+\subsection{Derived CNN dimensions}
+Feature shape: (4097, 1292). Trainable parameters: 521,095.
+\begin{longtable}{p{0.34\linewidth}lll}
+\textbf{Layer} & \textbf{Output (C,H,W)} & \textbf{Parameters} & \textbf{RF (H,W)} \\\hline\endhead
+Input & 1 x 4097 x 1292 & 0 & 1 x 1 \\
+Conv2d 1 & 32 x 4097 x 1292 & 704 & 3 x 7 \\
+MaxPool2d 1 & 32 x 2048 x 323 & 0 & 4 x 10 \\
+Conv2d 2 & 64 x 2048 x 323 & 51,264 & 12 x 26 \\
+MaxPool2d 2 & 64 x 1024 x 80 & 0 & 14 x 38 \\
+Conv2d 3 & 128 x 1024 x 80 & 73,856 & 22 x 70 \\
+MaxPool2d 3 & 128 x 512 x 20 & 0 & 26 x 118 \\
+AdaptiveAvgPool2d & 128 x 12 x 1 & 0 & aggregated \\
+Flatten / Dropout & 1536 & 0 & aggregated \\
+Hidden Linear / ReLU / Dropout & 256 & 393,472 & aggregated \\
+Output Linear & 7 & 1,799 & aggregated \\
+\end{longtable}

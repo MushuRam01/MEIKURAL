@@ -41,8 +41,9 @@ Place training performances beneath the seven configured class folders. Expandin
 the number of performances does not change the network. Expanding the class set
 would change the output task and is not part of this version. All eligible training
 recordings are used, with no internal validation or test split. Optional annotations
-are diagnostics only. Batch notebooks default to
-\path{data/test_ver2_handpicked}, with ground truth supplied by the raag folders.
+are diagnostics only. Batch inference defaults to the existing shared
+\path{data/test_ver1_handpicked} collection, with ground truth supplied by its raag
+folders. The notebook's test root remains editable; reports use Version 2 paths.
 Audio is the only inference input.
 
 The optional dataset-selection command reuses Version 1's UUID-based planner and
@@ -62,7 +63,7 @@ device to \texttt{auto}, and explicit CPU mode remains supported.
 cd /home/mushu-cislab/GitHub/MEIKURAL
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
-# Populate/expand data/ver2/set and data/test_ver2_handpicked first.
+# Training: data/ver2/set; shared test audio: data/test_ver1_handpicked.
 # These commands are user-launched, not run by the implementation:
 python3 -m src.ver2.preprocessing.copy_raag_folders --dry-run
 python3 -m src.ver2.preprocessing.copy_raag_folders

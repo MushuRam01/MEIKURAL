@@ -39,7 +39,7 @@ full-recording inference on the handpicked collection, GPU training, or accuracy
 evaluation has been run. Tests constructing an optimizer only serialize an
 untrained checkpoint to verify loading; they do not update model parameters.
 
-Populate or expand `data/ver2/set` and `data/test_ver2_handpicked` before running
+Populate or expand `data/ver2/set` and the shared `data/test_ver1_handpicked` before running
 the commands in the README. Existing Version 1 artifacts are preserved.
 
 ## Limits

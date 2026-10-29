@@ -1,0 +1,275 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=23mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,longtable,booktabs,array}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible}
+\setlength{\emergencystretch}{3em}
+\title{MEIKURAL Version 3\\Native STFT images and a larger CNN}
+\author{Implementation and mathematical reference}
+\date{}
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Purpose and changes}
+Version 3 removes tonic estimation and frequency-axis alignment entirely. After
+unchanged decoding, windowing, RMS normalization, gain limits, and zero padding,
+the CNN receives all native nonnegative-frequency STFT magnitude bins. There is
+no cents conversion, interpolation, pitch shift, frequency cropping, mel transform,
+or image resizing. Logarithmic intensity compression remains, as in earlier
+versions; it changes pixel values rather than frequency coordinates.
+
+The complete default input is $4097\times1292$, rather than $240\times1292$.
+Per the larger-capacity specification, the CNN uses 32/64/128 filters and a
+256-unit hidden classifier. It has 521095 parameters. The current training batch
+size is two and inference batch size is one; native STFT activations are
+substantially larger than earlier images. The GPU device, 30 epochs, optimizer, regularization strength,
+and seven class labels remain configured centrally.
+
+Earlier versions and their artifacts are preserved. New orchestration lives under
+\path{src/ver3}; unchanged decoder, windowing, gain function, dataset selector,
+and report plotting are reused from the repository. Version 3 never calls the
+tonic-estimation functions. Essentia remains in the unified project requirements
+for older versions but is not required by the Version 3 processing path or its
+checkpoint package-version collection.
+
+\section{Configuration and future execution}
+The single configuration is \path{src/ver3/config.json}. Defaults are:
+\begin{center}
+\begin{tabular}{ll}\toprule
+Purpose & Location\\\midrule
+Training audio & \path{data/ver3/set}\\
+Feature cache & \path{data/ver3/features}\\
+Model and history & \path{models/ver3}\\
+Handpicked collection & \path{data/test_ver1_handpicked}\\
+Batch figures & \path{outputs/ver3/handpicked}\\\bottomrule
+\end{tabular}
+\end{center}
+The existing handpicked collection is shared for comparison rather than assuming
+a nonexistent version-specific test folder. Notebook paths remain editable.
+Training uses every usable recording/window in the configured dataset, with no
+internal split. Add performances beneath the same seven configured raag folders.
+Changing the class set changes the task and is not part of this specification.
+
+The selector copies every single-label Saraga recording with a matching UUID,
+preserving annotations and source files. It imposes no artist or per-class limit,
+skips identical copies, and refuses conflicting destination contents. Annotations
+are never read for Version 3 feature extraction. You can instead point the dataset
+setting at an existing raw-audio collection, keeping feature and model paths separate.
+
+Run the following later, from the repository root with the project environment:
+\begin{lstlisting}
+source .venv/bin/activate
+python3 -m src.ver3.preprocessing.copy_raag_folders --dry-run
+python3 -m src.ver3.preprocessing.copy_raag_folders
+python3 -m src.ver3.preprocessing.prepare
+python3 -m src.ver3.training.train
+python3 -m src.ver3.inference.predict \
+    /path/to/audio.mp3 models/ver3/latest.pt --device auto
+\end{lstlisting}
+These full-dataset preparation and training commands are not run as part of
+implementation verification. There is no tonic diagnostic flag in Version 3.
+
+\section{Unchanged audio preparation}
+\subsection{Decoding and window boundaries}
+Decode audio in bounded blocks, convert channels to their arithmetic mean, and
+resample to $f_s=22050$ Hz. Native decoding uses stateful soxr HQ; unsupported
+formats use FFmpeg/FFprobe with an explicit arithmetic downmix. Corrupt, empty,
+nonfinite, and missing audio fails clearly rather than becoming a guessed result.
+Whole-audio feature preparation and inference stream through bounded buffers;
+only the interactive picker holds a complete song in RAM for responsive seeking.
+
+Let the decoded recording contain $N>0$ samples. For $L=30f_s$, stride $S=15f_s$,
+and first start $a_0=-15f_s$:
+\[
+a_j=a_0+jS,\qquad
+J=\max\left(0,\left\lceil\frac{N-L-a_0}{S}\right\rceil\right),\qquad j=0,\ldots,J.
+\]
+The final window is the first to reach/cross EOF. Keep real samples in
+$[\max(0,a_j),\min(N,a_j+L))$. Left and right padding are respectively
+$\max(0,-a_j)$ and $\max(0,a_j+L-N)$ samples. Exact-boundary EOF produces no extra
+window. A 70-second recording gives starts $-15,0,15,30,45$ seconds; the first
+window has 15 seconds of left padding, and the last has five seconds of right
+padding. A one-second recording gives one window with 15 seconds left and 14
+seconds right padding. Every model input contains exactly $L=661500$ samples.
+
+\subsection{RMS, gain limits, and silence}
+For the $n$ real samples in one chunk, excluding only artificial padding:
+\[
+r=\sqrt{\frac1n\sum_i x_i^2},\qquad p=\max_i|x_i|,
+\]
+\[
+g=\min\left(\frac{10^{R/20}}r,10^{G/20},\frac{P}p\right).
+\]
+Use the exact existing gain function: $R=-20$ dBFS (target RMS $0.1$), maximum
+amplification $G=20$ dB (factor 10), peak ceiling $P=0.99$, and silence threshold
+$r<10^{-5}$. Apply $gx$ to the real samples, then append/prepend the required
+zeros. Peak or gain constraints may prevent reaching the target. No hard clipping
+is used. Silence is skipped rather than excessively amplified. Natural silence
+inside the real recording is not treated as artificial padding. RMS accumulation
+uses float64; normalized waveforms use float32.
+
+\section{Native STFT image without pitch manipulation}
+For padded normalized audio $y$, FFT size $F$, hop $H$, and Hann window $w$:
+\[
+Z[k,t]=\sum_{n=0}^{F-1}\widetilde y[tH+n-F/2]w[n]e^{-2\pi i kn/F},\qquad
+M[k,t]=|Z[k,t]|.
+\]
+Defaults retain the periodic Hann window of length $8192$, FFT size $F=8192$,
+hop $H=512$, centered frames, and constant zero padding at analysis boundaries.
+All bins $k=0,\ldots,\lfloor F/2\rfloor$ remain, including DC and Nyquist for even
+$F$. Their frequencies are $f_k=kf_s/F$; frame centers are $tH/f_s$.
+\[
+K=1+\lfloor F/2\rfloor=4097,\qquad
+T=1+\left\lfloor\frac{L+2\lfloor F/2\rfloor-F}{H}\right\rfloor=1292.
+\]
+Rows are uniformly spaced by about 2.692 Hz from 0 to 11025 Hz. They represent
+absolute frequency and stay in their original order. The 371.5 ms analysis window
+and Hann main lobe limit frequency discrimination; time hops are about 23.22 ms.
+Changing intensity scale does not align voices sung at different tonics.
+
+Let $m=\max M$, numerical floor $\epsilon=10^{-12}$, and dynamic range $B=80$ dB.
+If $m\le\epsilon$, return zeros. Otherwise:
+\begin{align*}
+D[k,t]&=20\log_{10}\frac{\max(M[k,t],\epsilon)}m,\\
+X[k,t]&=\frac{\operatorname{clip}(D[k,t],-B,0)+B}{B}.
+\end{align*}
+The result is a float32 $4097\times1292$ matrix in $[0,1]$. Compression is done
+in place to avoid unnecessary large temporary arrays. Cache matrices as float16
+NumPy files, converting to float32 for the model. Inference repeats that round trip
+so it matches training quantization. No figure colors, axes, or PNG/JPEG encoding
+are part of the CNN input.
+
+\section{Larger CNN and exact dimensions}
+The input shape is $(B,1,4097,1292)$, with current training $B=2$ and inference
+$B=1$. Each block is a
+biased stride-one same-padded convolution, ReLU, and max pooling with kernel and
+stride $(2,4)$. Filters are 32/64/128; kernels remain $(3,7)$, $(5,5)$, and $(3,3)$.
+For a convolution,
+\[
+z_{b,o,h,t}=b_o+\sum_{i,u,v}K_{o,i,u,v}X_{b,i,h+u-p_h,t+v-p_t},\qquad
+a=\max(0,z).
+\]
+Odd kernels use $p=(k-1)/2$. The post-pool feature maps are:
+\[
+(32,2048,323)\ \longrightarrow\ (64,1024,80)\ \longrightarrow\ (128,512,20).
+\]
+Adaptive average pooling to $(12,1)$ produces $(128,12,1)$, flattening to 1536
+values. The classifier is dropout 0.25, a biased $1536\to256$ linear layer, ReLU,
+dropout 0.25, then a biased $256\to7$ output. Dropout is disabled in evaluation;
+during training, retained entries are scaled by $1/(1-0.25)$.
+
+Convolution parameters are $C_o(C_i k_h k_t+1)$: 704, 51264, and 73856.
+The hidden classifier contributes $1536\cdot256+256=393472$; the output adds
+$256\cdot7+7=1799$. Total trainable parameters are $521095$.
+
+Receptive fields use $r_0=j_0=1$ and
+$r_\ell=r_{\ell-1}+(k_\ell-1)j_{\ell-1}$,
+$j_\ell=j_{\ell-1}s_\ell$. After the third max pool, the receptive field is
+$26\times118$ native bins/frames, with jumps $8\times64$. These frequency bins
+are now linear Hz bins rather than cents. Adaptive pooling then aggregates local
+patterns across broader frequency regions and time. This is an image classifier,
+not an explicit full-phrase sequence model.
+
+\section{Training, class weighting, and devices}
+For usable class counts $n_c$, total $N_w$, and $C=7$, use $w_c=N_w/(Cn_c)$.
+Softmax scores are $p_{b,c}=e^{z_{b,c}}/\sum_k e^{z_{b,k}}$. Optimize
+\[
+\mathcal L=-\frac1B\sum_b w_{y_b}\log p_{b,y_b}.
+\]
+The per-example weighted losses are averaged over batch size, not divided by
+the sum of batch class weights. That distinction is necessary at $B=1$:
+dividing by the single sample's weight would cancel class balancing. Across a
+complete epoch, $\sum_i w_{y_i}=N_w$, so the logged mean has the intended globally
+normalized class-weighted interpretation.
+
+AdamW defaults remain learning rate $10^{-3}$, weight decay $10^{-4}$,
+betas $(0.9,0.999)$, and epsilon $10^{-8}$:
+\[
+m_t=\beta_1m_{t-1}+(1-\beta_1)g_t,\qquad
+v_t=\beta_2v_{t-1}+(1-\beta_2)g_t^2,
+\]
+\[
+\theta_t=(1-\eta\lambda)\theta_{t-1}
+-\eta\frac{m_t/(1-\beta_1^t)}{\sqrt{v_t/(1-\beta_2^t)}+\epsilon_{\mathrm{Adam}}}.
+\]
+Use 30 epochs, seed 42, float32, shuffled batches, zero loader workers, no
+augmentation, no scheduler, and no early stopping. Training requires CUDA by
+default and fails if unavailable. Explicit CPU and optional automatic fallback
+remain supported. No training run is started by building this version.
+
+Save the final state of each epoch atomically as \texttt{latest.pt}, alongside
+config and training history. Checkpoints include model, optimizer, epoch, labels,
+full config, feature fingerprint, and package versions. Existing checkpoints are
+not overwritten by a new run; automatic resume is not implemented. Inference
+loads saved preprocessing/model settings and can restore CUDA-trained weights
+on CPU. Runtime errors and GPU out-of-memory errors are not silently hidden.
+
+\section{Generated defaults and model reference}
+The following tables are generated by
+\texttt{python3 -m src.ver3.documentation.generate}. Shapes are derived from the
+configured model layers without allocating large activations; a meta-tensor test
+also exercises the complete network at the full default input size.
+\input{ver3_tables.tex}
+
+\section{Cache size and version boundaries}
+The fingerprint hashes format 3, the native-STFT representation tag, and audio
+and spectrogram settings. Version 1/2 checkpoints and caches are rejected by the
+Version 3 loader. There are no tonic or cents-grid settings, tonic metadata, or
+annotation-based correction paths. The manifest records source size/mtime,
+configuration, completion state, and per-window identity, timestamps, padding,
+features, and failures. Changed source data or preprocessing requires a fresh
+cache directory. Interrupted preparation is rebuilt; conflicting sources are not
+silently mixed. Input and feature-cache directories must be separate/non-nested.
+
+A default cached window takes about 10.59 MB before NumPy header overhead:
+$4097\cdot1292\cdot2$ bytes. At 3471 windows, this is about 36.75 GB. This is an
+estimate using the previous dataset's window count, not a scan of Version 3 data.
+The first 32-channel convolution output alone takes about 677.5 MB in float32 at
+batch one; gradients and other activations add more. Synthetic forward/backward
+measurements reserved about 2.77 GiB at batch one and 6.42 GiB at batch two on
+the RTX 4070. The subsequent training run completed at batch two. Larger batches
+are untested. These measurements do not guarantee fit for every device/backend.
+Large STFT features cost substantially
+more disk, compute, and memory than the earlier remapped images.
+
+\section{Inference and notebooks}
+\begin{itemize}
+\item \path{notebooks/08_ver3_inference.ipynb}: raw-audio score timeline,
+per-window metadata, and overall ranked scores.
+\item \path{notebooks/09_ver3_interactive_clip.ipynb}: select, listen to, and
+classify exactly one passage without full-song pitch analysis.
+\item \path{notebooks/10_ver3_handpicked_batch.ipynb}: one combined report per
+recording, followed by song-level and chunk-level confusion matrices.
+\end{itemize}
+Whole-song ranking remains
+$\overline p_c=\sum_j d_jp_{j,c}/\sum_jd_j$, where $d_j$ is real, unpadded duration
+of a successful window. A selected clip instead gets one prediction. Failed
+windows are excluded and reported. Batch ground truth comes from folder names,
+using existing spelling aliases without confusing Bhairav with Bhairavi.
+Confusion matrix rows are truth and columns are predictions. Song-level counts
+use one final argmax per recording; chunk-level counts use one unweighted argmax
+per successful window, including padded edges. Labels are retained so the matrix
+cells do not rerun inference. Reports save under \path{outputs/ver3/handpicked}.
+The shared test collection now contains 20 recordings across all seven classes,
+including three Marwa recordings. Folder discovery automatically recognizes new
+files after rerunning the recording-list cell; the model needs no retraining to
+evaluate additional test performances of its existing classes.
+
+\section{Verification and limits}
+Synthetic checks cover gain/padding, native STFT values, forbidden tonic calls,
+full-size CNN shapes, batch-one class weights, version isolation, inference wiring,
+and notebooks. Full-size shape tests use meta tensors rather than GPU allocations.
+Initial implementation checks used temporary caches and untrained checkpoints.
+The later user-launched run completed all 30 CUDA epochs on 3471 windows with
+batch two: final training loss 0.09984 and training accuracy 96.00\%. No external
+test accuracy is inferred from those metrics. See \path{docs/ver3_verification.md}.
+
+Absolute pitch, accompaniment, and timbre remain visible. Larger capacity can
+overfit limited independent recordings despite many overlapping windows. Scores
+are uncalibrated and unknown rejection is absent. External accuracy still requires
+evaluation on the handpicked recordings.
+\end{document}

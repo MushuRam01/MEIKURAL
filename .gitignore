@@ -13,6 +13,11 @@ outputs/
 !/models/ver2/latest.pt
 !/models/ver2/config.json
 !/models/ver2/history.json
+!/models/ver3/
+/models/ver3/*
+!/models/ver3/latest.pt
+!/models/ver3/config.json
+!/models/ver3/history.json
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
