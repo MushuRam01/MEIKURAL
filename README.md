@@ -15,6 +15,90 @@ by the project owner will be evaluated separately.
 - `notebooks/03_ver1_interactive_clip.ipynb`: listen to and classify a chosen 30-second passage.
 - `notebooks/04_ver1_handpicked_batch.ipynb`: one combined score timeline/ranking image per handpicked recording.
 
+## Version 2 — full-recording tonic
+
+Version 2 estimates Sa **once from the complete recording**, then uses that
+same frequency to align every chunk's STFT. The CNN, gain normalization,
+windowing, spectrogram settings, optimizer, and training hyperparameters remain
+identical to Version 1. Version 1 code and artifacts are preserved.
+
+**No Version 2 training or full-data feature preparation has been run.** Expand
+the datasets first, then run the commands below yourself with `.venv` activated.
+All Version 2 settings live in `src/ver2/config.json`:
+
+| Purpose | Default location |
+|---|---|
+| Training recordings | `data/ver2/set/<configured-raag>/...` |
+| External handpicked recordings | `data/test_ver2_handpicked/<raag>/...` |
+| Feature cache | `data/ver2/features/` |
+| Model and training history | `models/ver2/` |
+| Batch reports and confusion matrices | `outputs/ver2/handpicked/` |
+| Mathematical reference | `docs/ver2.tex` |
+
+Add performances under the same seven configured raags. You can point
+`paths.dataset` at an existing collection instead of copying it, but always keep
+Version 2 feature/model outputs separate. Optional Saraga annotations are used
+only for tonic diagnostics. There is no internal train/validation/test split.
+To compare versions on the existing test collection, set the new batch notebook's
+`TEST_DIR` to `ROOT / "data/test_ver1_handpicked"`; its default is the new Version 2
+collection. No audio folders have been copied or created automatically.
+
+When the expanded datasets are ready:
+
+```bash
+# Preview every matching Saraga recording, without copying:
+python3 -m src.ver2.preprocessing.copy_raag_folders --dry-run
+# Copy all selected recordings and annotations into data/ver2/set/<raag>/...:
+python3 -m src.ver2.preprocessing.copy_raag_folders
+# Build features, then train only when you are ready:
+python3 -m src.ver2.preprocessing.prepare --diagnose-tonic
+python3 -m src.ver2.training.train
+```
+
+The copy command reuses Version 1's complete-recording selection and safe copy
+logic. It selects **every** single-label recording whose Saraga raag UUID matches
+a class in `src/ver2/config.json`, with no per-artist or per-raag limit. The
+destination comes from `paths.dataset`. Use `--source /path/to/saraga-collection`
+for a different Saraga source. Identical copies are skipped; different existing
+contents are never overwritten. The current collection supplies 25 matching
+recordings, the same complete selection as Version 1. Unlabelled and multi-raag
+recordings are excluded rather than assigned a guessed single label.
+
+Training defaults to required CUDA and 30 epochs, as in Version 1. Version 2
+refuses Version 1 caches and checkpoints. Train a new model before using:
+
+```bash
+python3 -m jupyterlab notebooks/05_ver2_inference.ipynb
+python3 -m jupyterlab notebooks/06_ver2_interactive_clip.ipynb
+python3 -m jupyterlab notebooks/07_ver2_handpicked_batch.ipynb
+```
+
+The single-audio notebook shows the full-recording Sa and prediction timeline.
+The interactive notebook estimates Sa at **Load audio**, then reuses it for every
+selected passage. Batch inference includes both song-level and chunk-level
+confusion matrices. These notebooks use `models/ver2/latest.pt`; there is no
+automatic reuse of Version 1 weights.
+
+The full recording is decoded into RAM for the tonic estimator, so long files
+need more memory than Version 1's streaming inference. A single incorrect tonic
+can still misalign the whole song; consistency does not guarantee correctness.
+
+Regenerate Version 2's numerical documentation and compile it with:
+
+```bash
+python3 -m src.ver2.documentation.generate
+mkdir -p outputs/ver2/docs
+(cd docs && \
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=../outputs/ver2/docs ver2.tex && \
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory=../outputs/ver2/docs ver2.tex)
+```
+
+Synthetic tests (no training loop) are in `tests/ver2/`:
+
+```bash
+python3 -m pytest tests/ver2 -q
+```
+
 ## Version 1
 
 All 25 selected recordings under `data/ver1/set/` are training data. External
@@ -202,6 +286,14 @@ as notebook 02. Each image is displayed inline and saved under
 `outputs/ver1/handpicked/<raag-folder>/<audio-filename>.png`. No recordings are
 pooled together. Failed recordings receive an error image without stopping the
 remaining batch. Rerunning overwrites the corresponding report PNGs, not audio.
+
+The final two cells display and save `confusion_matrix_songs.png` and
+`confusion_matrix_chunks.png` in the same output directory. The first counts one
+final duration-weighted prediction per song; the second counts each successfully
+predicted window once against its song's folder label, including padded edges.
+Rows are ground truth and columns are predictions. Failed predictions are
+excluded with counts shown; overlapping windows are correlated. Restart the
+kernel and rerun the updated batch once to populate the new chunk-label summaries.
 
 ### Share the trained model and infer on a laptop
 

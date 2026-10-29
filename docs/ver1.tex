@@ -407,6 +407,17 @@ structure under \path{outputs/ver1/handpicked}; reruns replace report images,
 not source audio. A predicted raag here is one of the seven classes, not a
 separate family or thaat classification.
 
+The final two notebook cells construct raw-count confusion matrices with true
+folder labels on rows and predicted raags on columns. For labels $i,j$,
+$C_{ij}=\sum_n\mathbf{1}[y_n=i\ \wedge\ \widehat y_n=j]$.
+The song matrix uses one argmax of the duration-weighted ranking per recording.
+The chunk matrix uses each successful window's argmax against its parent
+recording's label, giving every window one vote without duration weighting.
+Padded edge windows are included; overlapping samples are correlated. Missing
+predictions are excluded and exclusion counts are shown. Unknown folder labels
+remain separate matrix labels rather than being silently dropped. Only chunk
+labels are retained between recordings, so neither matrix cell repeats inference.
+
 \section{Verification and experiment status}
 Automated checks cover exact window boundaries; gain limits and silence;
 relative-pitch alignment for synthetic tones with different tonics; finite matrix

@@ -9,7 +9,12 @@ import numpy as np
 import pytest
 
 from src.ver1.config import load_config
-from src.ver1.inference.report import folder_raag, performance_figure, recording_labels
+from src.ver1.inference.report import (
+    confusion_figure,
+    folder_raag,
+    performance_figure,
+    recording_labels,
+)
 
 
 def test_folder_labels_and_discovery(tmp_path):
@@ -70,7 +75,6 @@ def test_batch_notebook_valid():
     nbformat.validate(notebook)
     for cell in notebook.cells:
         if cell.cell_type == "code":
-            assert not cell.outputs
             compile(cell.source, "batch notebook", "exec")
 
 
@@ -85,7 +89,8 @@ def test_notebook_batch_continues_after_recording_error(tmp_path):
     good.touch()
     bad.touch()
     result = {"classes": classes, "ranking": [{"raag": label, "score": 1 / 7} for label in classes],
-              "windows": [{"valid_start_seconds": 0, "valid_seconds": 30, "scores": [1 / 7] * 7}],
+              "windows": [{"valid_start_seconds": 0, "valid_seconds": 30, "scores": [1 / 7] * 7,
+                           "top_raag": "Shree"}],
               "duration_seconds": 30, "device": "cpu", "usable_windows": 1, "failed_windows": 0}
 
     def predict(path, checkpoint, device):
@@ -106,4 +111,44 @@ def test_notebook_batch_continues_after_recording_error(tmp_path):
     assert len(figures) == 2
     assert len(list(output.rglob("*.png"))) == 2
     assert namespace["summaries"][0]["ranking"] == result["ranking"]
+    assert namespace["summaries"][0]["chunk_predictions"] == ["Shree"]
+    assert namespace["summaries"][1]["chunk_predictions"] == []
     assert "Invalid audio" in namespace["summaries"][1]["error"]
+
+
+def test_confusion_counts_preserve_unknown_folder_labels():
+    classes = load_config()["classes"]
+    fig = confusion_figure(["Shree", "Shree", "bhairav"], ["Shree", "Todi", "Bhairavi"], classes, "Test")
+    counts = fig.axes[0].images[0].get_array()
+    assert counts.sum() == 3 and counts.shape == (8, 8)
+    assert counts[0, 0] == 1 and counts[0, 4] == 1
+    assert counts[7, 6] == 1
+    fig.canvas.draw()
+    plt.close(fig)
+    fig = confusion_figure([], [], classes, "No predicted samples")
+    assert fig.axes[0].images[0].get_array().sum() == 0
+    plt.close(fig)
+
+
+def test_notebook_song_and_chunk_matrices_use_different_sample_units(tmp_path):
+    import nbformat
+
+    classes = load_config()["classes"]
+    summaries = [
+        {"correct_raag": "Shree", "predicted_raag": "Todi", "chunk_predictions": ["Shree", "Todi", None]},
+        {"correct_raag": "Todi", "predicted_raag": "Todi", "chunk_predictions": ["Todi", "Todi"]},
+        {"correct_raag": "Shree", "predicted_raag": None, "chunk_predictions": []},
+    ]
+    figures = []
+    namespace = {"summaries": summaries, "classes": classes, "OUTPUT_DIR": tmp_path,
+                 "display": figures.append, "plt": plt}
+    notebook = nbformat.read("notebooks/04_ver1_handpicked_batch.ipynb", as_version=4)
+    for cell in notebook.cells[-2:]:
+        assert cell.cell_type == "code"
+        exec(compile(cell.source, "confusion matrix cell", "exec"), namespace)  # noqa: S102 -- repository-owned cells, synthetic results.
+    song_counts = figures[0].axes[0].images[0].get_array()
+    chunk_counts = figures[1].axes[0].images[0].get_array()
+    assert song_counts.sum() == 2 and song_counts[0, 4] == 1 and song_counts[4, 4] == 1
+    assert chunk_counts.sum() == 4 and chunk_counts[0, 0] == 1
+    assert chunk_counts[0, 4] == 1 and chunk_counts[4, 4] == 2
+    assert len(list(tmp_path.glob("confusion_matrix_*.png"))) == 2

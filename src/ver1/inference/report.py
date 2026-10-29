@@ -6,8 +6,24 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 from ..preprocessing.prepare import FORMATS
+
+
+def confusion_figure(truth, predictions, classes, title):
+    """Rows are folder labels; columns are predictions, with raw sample counts."""
+    if len(truth) != len(predictions):
+        raise ValueError("Each ground-truth label must have one prediction")
+    labels = list(classes) + sorted((set(truth) | set(predictions)) - set(classes))
+    counts = (confusion_matrix(truth, predictions, labels=labels) if truth
+              else np.zeros((len(labels), len(labels)), dtype=int))
+    fig, ax = plt.subplots(figsize=(9, 8), layout="constrained")
+    ConfusionMatrixDisplay(counts, display_labels=labels).plot(
+        ax=ax, cmap="Blues", values_format="d", xticks_rotation=45, colorbar=False,
+        im_kw={"vmin": 0, "vmax": max(1, int(counts.max()))})
+    ax.set(title=title, xlabel="Predicted raag", ylabel="Correct raag (folder)")
+    return fig
 
 
 def folder_raag(name, classes):

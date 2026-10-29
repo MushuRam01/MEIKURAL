@@ -1,0 +1,319 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=23mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,longtable,booktabs,array}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible}
+\setlength{\emergencystretch}{3em}
+\title{MEIKURAL Version 2\\One recording, one Sa, unchanged spectrogram CNN}
+\author{Implementation and mathematical reference}
+\date{}
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Purpose and controlled change}
+Version 2 estimates Sa once from an entire supplied recording and reuses that
+frequency for every 30-second window. Version 1 estimates Sa independently per
+window. This is the intended experimental difference: the CNN architecture,
+window geometry, per-window gain normalization, STFT, relative-pitch grid,
+compression, loss, optimizer, regularization, and training defaults are unchanged.
+The model still classifies Shree, Jog, Miyan Malhar, Lalit, Todi, Marwa, and Bhairavi.
+
+All new implementation lives under \path{src/ver2}. Unchanged signal-processing,
+CNN, configuration validation, and plotting primitives are imported from Version 1
+rather than independently reimplemented. Version 1 code, checkpoints, and features
+remain usable with Version 1 entry points. Separate Version 2 orchestration selects
+the recording-level feature pipeline and rejects Version 1 artifacts.
+
+\section{Inputs, artifacts, and future execution}
+\path{src/ver2/config.json} is the single editable configuration. Its default
+training source is \path{data/ver2/set}, feature cache is \path{data/ver2/features},
+and model run is \path{models/ver2}. Relative paths resolve against the repository
+root. Populate or expand these sources before starting; the implementation does
+not copy the Version 1 dataset, create features, or train automatically. You may
+point the dataset setting at an existing raw-audio collection for a controlled
+comparison, while keeping feature and run output directories separate.
+
+Place training performances beneath the seven configured class folders. Expanding
+the number of performances does not change the network. Expanding the class set
+would change the output task and is not part of this version. All eligible training
+recordings are used, with no internal validation or test split. Optional annotations
+are diagnostics only. Batch notebooks default to
+\path{data/test_ver2_handpicked}, with ground truth supplied by the raag folders.
+Audio is the only inference input.
+
+The optional dataset-selection command reuses Version 1's UUID-based planner and
+atomic complete-folder copy implementation. It reads the selected classes and
+destination from the Version 2 JSON, scans every Saraga recording's metadata,
+and copies all recordings with exactly one matching raag label, including their
+annotations. There is no artist or per-class sampling limit. Unlabelled and
+multi-raag recordings are excluded. Identical destination folders are skipped;
+conflicting contents are not overwritten. A dry run of the current local source
+finds all 25 matching recordings (the same full selection as Version 1).
+
+\subsection{Commands to run later}
+Use the existing project virtual environment and unified requirements. CUDA
+training remains explicit; automatic fallback is available by setting the training
+device to \texttt{auto}, and explicit CPU mode remains supported.
+\begin{lstlisting}
+cd /home/mushu-cislab/GitHub/MEIKURAL
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+# Populate/expand data/ver2/set and data/test_ver2_handpicked first.
+# These commands are user-launched, not run by the implementation:
+python3 -m src.ver2.preprocessing.copy_raag_folders --dry-run
+python3 -m src.ver2.preprocessing.copy_raag_folders
+python3 -m src.ver2.preprocessing.prepare --diagnose-tonic
+python3 -m src.ver2.training.train
+python3 -m src.ver2.inference.predict \
+    /path/to/audio.mp3 models/ver2/latest.pt --device auto
+\end{lstlisting}
+No trained Version 2 model is provided before that training step. Version 1
+weights must not be renamed and used as Version 2 weights: they learned from a
+different feature-generation procedure.
+
+\section{Decoding and full-recording tonic estimation}
+\subsection{Real audio and gain}
+Decode all audio, average channels arithmetically, and resample to feature rate
+$f_s=22050$ Hz with the unchanged decoder. Native decoding uses stateful soxr HQ;
+unsupported codecs use FFmpeg with explicit arithmetic channel averaging.
+Missing, empty, corrupt, or nonfinite audio is an error. A recording is decoded
+once; files are processed sequentially.
+
+Let the complete real recording be $x_0,\ldots,x_{N-1}$, with no artificial
+padding. For both global tonic input and individual chunk normalization, use
+\[
+r(x)=\sqrt{\frac1N\sum_n x_n^2},\qquad p(x)=\max_n|x_n|,
+\]
+\[
+g(x)=\min\left(\frac{10^{R/20}}{r(x)},10^{G/20},\frac{P}{p(x)}\right).
+\]
+Defaults are target $R=-20$ dBFS, amplification limit $G=20$ dB, and peak ceiling
+$P=0.99$. Reject near-silence below RMS $10^{-5}$; no clipping or excessive silence
+amplification is used. RMS accumulates in float64; normalized samples are float32.
+
+\subsection{One estimator call for the entire performance}
+Normalize the entire recording with this gain rule and resample it from the
+feature rate to the estimator's 44100 Hz rate. Pass the complete resulting vector
+to Essentia's \texttt{TonicIndianArtMusic} exactly once. The tail is included.
+The input is not a selection of windows, a median of window estimates, or the
+first 30 seconds. Full-recording RMS normalization prepares only the estimator
+input; original decoded samples remain available for independent chunk gain
+normalization.
+
+The estimator uses harmonic multipitch salience, a pitch histogram accumulated
+across frames, and its built-in decision tree to select a likely tonic
+\cite{tonic,essentia}. The algorithm is reset between recordings because its frame
+cutter retains state. The same 65--500 Hz search range and all other parameters
+from Version 1 remain unchanged; see the generated tables.
+
+Writing $\mathcal T$ for this unchanged algorithm and $\mathcal R$ for resampling:
+\[
+\widehat f_{\mathrm{Sa}}=\mathcal T\bigl(\mathcal R(g(x)x)\bigr),\qquad
+\widehat f_{\mathrm{Sa},j}=\widehat f_{\mathrm{Sa}}\quad\text{for every chunk }j.
+\]
+Reject nonfinite or out-of-range estimates. If no tonic can be estimated, every
+window of that recording is reported unusable; there is no per-window fallback,
+annotation fallback, or guessed tonic. A valid estimator output is not a
+calibrated confidence measurement and can still be wrong.
+
+\subsection{Memory and scope of available information}
+The standard Essentia interface accepts an entire audio vector, so the decoded
+recording is held in RAM. Mono float32 at the feature rate uses about 5.3 MB per
+minute, before normalization, resampling, the estimator's internal buffers, and
+temporary copies. Peak memory is substantially larger. Very long performances
+may require a streaming implementation in a future version. No undocumented
+subsampling or truncated estimation is substituted to reduce this cost.
+
+Version 2 is offline inference: later parts of a recording can inform the Sa used
+for earlier windows. A standalone 30-second input estimates Sa from those supplied
+30 seconds. It will not necessarily get the same estimate as an excerpt selected
+from a full song. The interactive notebook explicitly uses the full loaded song.
+
+\section{Unchanged window construction and STFT image}
+\subsection{Windows and padding}
+At rate $f_s$, let $L=30f_s$, $S=15f_s$, and $a_0=-15f_s$. Generate starts
+$a_j=a_0+jS$ until the first window reaches or crosses $N$:
+\[
+J=\max\left(0,\left\lceil\frac{N-L-a_0}{S}\right\rceil\right),\qquad j=0,\ldots,J.
+\]
+Keep real samples on $[\max(0,a_j),\min(N,a_j+L))$, with left padding
+$\max(0,-a_j)$ and right padding $\max(0,a_j+L-N)$.
+Exact-boundary EOF does not create an extra window. Per-window gain is measured
+from real samples only and applied before padding. Silent windows are skipped,
+but their metadata retains the recording's known Sa.
+
+\subsection{STFT definition and resolution}
+For padded normalized window $y_j$, FFT size $F$, centered analysis window $w$,
+and hop $H$:
+\[
+Z_j[k,t]=\sum_{n=0}^{F-1}\widetilde y_j[tH+n-F/2]\,w[n]e^{-2\pi i kn/F},
+\qquad M_j[k,t]=|Z_j[k,t]|.
+\]
+Defaults are a periodic Hann window of length $F=8192$, hop $H=512$, and zero
+padding for centered frames. Librosa's unnormalized forward STFT convention is
+unchanged. Frequencies are $kf_s/F$ and frame centers $tH/f_s$.
+\[
+T=1+\left\lfloor\frac{L+2\lfloor F/2\rfloor-F}{H}\right\rfloor=1292.
+\]
+FFT spacing is about 2.692 Hz, window duration about 371.5 ms, and hop about
+23.22 ms. The Hann window's frequency discrimination limits actual pitch detail;
+interpolating to a fine pitch grid cannot create missing spectral resolution.
+
+\subsection{Fixed Sa remapping for every chunk}
+Use the same cents grid as Version 1:
+\[
+c_i=-1200+25i,\quad i=0,\ldots,239,\qquad
+f_i=\widehat f_{\mathrm{Sa}}2^{c_i/1200}.
+\]
+The grid ends at 4775 cents, retains separate octaves, and always uses the same
+recording-level $\widehat f_{\mathrm{Sa}}$. For $u_i=f_iF/f_s$,
+$k_i=\lfloor u_i\rfloor$, and $\alpha_i=u_i-k_i$:
+\[
+A_j[i,t]=(1-\alpha_i)M_j[k_i,t]+\alpha_iM_j[k_i+1,t].
+\]
+The configured maximum tonic and grid must remain below Nyquist. Time positions
+are unchanged. This is frequency-axis resampling, not changing audio pitch or
+separating vocals. Harmonics, accompaniment, and recording characteristics remain.
+
+For $m_j=\max A_j$, numerical floor $\epsilon$, and dynamic range $B=80$ dB,
+return zeros if $m_j\le\epsilon$; otherwise:
+\begin{align*}
+D_j[i,t]&=20\log_{10}\frac{\max(A_j[i,t],\epsilon)}{m_j},\\
+X_j[i,t]&=\frac{\operatorname{clip}(D_j[i,t],-B,0)+B}{B}.
+\end{align*}
+The matrix is $240\times1292$ in $[0,1]$. Store float16 NumPy features; convert to
+float32 for CNN input. Inference repeats that quantization for consistency. No
+plot axes, color mapping, image-file compression, or resizing enter the network.
+
+\section{Identical CNN and training mathematics}
+The CNN class is imported directly from Version 1. Input is $(B,1,240,1292)$.
+Biased same-padded stride-one convolutions use kernels $(3,7)$, $(5,5)$, and
+$(3,3)$ with output channels 16, 32, and 64. Each convolution is followed by ReLU
+and floor-mode max pooling with kernel and stride $(2,4)$. A convolution has
+$C_o(C_i k_h k_t+1)$ parameters; pooling and ReLU have none.
+
+After the pools, dimensions are $(16,120,323)$, $(32,60,80)$, and $(64,30,20)$.
+Adaptive average pooling to $(12,1)$ averages time and retains 12 pitch regions.
+Adaptive output bin $j$ averages input indices
+$\lfloor jI/O\rfloor$ through $\lceil(j+1)I/O\rceil-1$; bins can overlap.
+Flatten to 768 values, apply training-only dropout 0.25 with retained entries
+scaled by $1/0.75$, then a biased 768-to-7 linear classifier.
+
+The convolution parameter counts are 352, 12832, and 18496; the classifier has
+5383, for a total of 37063. For receptive fields, initialize $r_0=j_0=1$ and use
+\[
+r_\ell=r_{\ell-1}+(k_\ell-1)j_{\ell-1},\qquad
+j_\ell=j_{\ell-1}s_\ell.
+\]
+After the third pool, receptive fields are $26\times118$ bins/frames with jumps
+$8\times64$. The time support is about $(117H+F)/f_s=3.09$ seconds before
+adaptive pooling. The CNN aggregates local patterns rather than explicitly
+modeling the complete order of a 30-second phrase.
+
+Let $n_c$ be usable windows for class $c$, $N_w=\sum_c n_c$, and $C=7$.
+Use $w_c=N_w/(Cn_c)$ and weighted cross-entropy on logits $z$:
+\[
+p_{b,c}=\frac{e^{z_{b,c}}}{\sum_k e^{z_{b,k}}},\qquad
+\mathcal L=-\frac{\sum_b w_{y_b}\log p_{b,y_b}}{\sum_b w_{y_b}}.
+\]
+AdamW maintains $m_t=\beta_1m_{t-1}+(1-\beta_1)g_t$ and
+$v_t=\beta_2v_{t-1}+(1-\beta_2)g_t^2$, with bias-corrected moments and update
+\[
+\theta_t=(1-\eta\lambda)\theta_{t-1}
+-\eta\frac{\widehat m_t}{\sqrt{\widehat v_t}+\epsilon_{\mathrm{Adam}}}.
+\]
+Defaults remain batch 8, 30 epochs, learning rate $10^{-3}$, decay $10^{-4}$,
+betas $(0.9,0.999)$, epsilon $10^{-8}$, and seed 42. Use float32, shuffled
+batches, no augmentation, no scheduler, and no early stopping. Record training
+loss/accuracy without calling them validation metrics. No optimizer steps or
+training epochs have been run for Version 2 during implementation.
+
+\section{Generated settings and exact model dimensions}
+Regenerate this reference from the Version 2 JSON and real model modules with
+\texttt{python3 -m src.ver2.documentation.generate}.
+\input{ver2_tables.tex}
+
+\section{Caches, checkpoints, and failures}
+The Version 2 feature fingerprint hashes format 2, preprocessing version 2,
+recording-level tonic scope, and the audio, tonic, and spectrogram settings.
+Version 1 caches and checkpoints are incompatible
+even though tensor dimensions match. The manifest includes source identities,
+sizes/mtimes, configuration, a single tonic per recording, and window-level
+timestamps, padding, tonic scope, features, and failures. A near-silent chunk does
+not cause Sa to be re-estimated. Changed sources or preprocessing settings require
+a new feature-cache directory.
+
+Save checkpoints atomically after each future training epoch with model weights,
+optimizer state, epoch, ordered classes, full config, feature fingerprint, and
+package versions. Save training history and config alongside the checkpoint.
+Existing checkpoints are protected against overwrite; automatic resume is not
+implemented. The Version 2 loader rejects a Version 1 config before prediction,
+validates the fingerprint, and restores saved architecture/preprocessing rather
+than trusting current editable defaults.
+
+Default training requires CUDA, failing clearly when unavailable. Explicit CPU
+and automatic fallback remain available. Inference defaults to automatic device
+selection and can load CUDA-trained weights on CPU. GPU memory errors propagate
+without silently restarting training. Source audio is not modified. Small selected
+Version 2 checkpoint/config/history files are eligible for Git, just like Version 1.
+
+\section{Inference notebooks and evaluation}
+\begin{itemize}
+\item \path{notebooks/05_ver2_inference.ipynb}: raw-audio inference, fixed recording
+Sa, seven-score timeline, ranked overall scores, and failure metadata.
+\item \path{notebooks/06_ver2_interactive_clip.ipynb}: load the full song, estimate
+Sa once, listen to and classify chosen passages using that same Sa. Changing
+either file path requires loading again; moving the slider never estimates tonic.
+\item \path{notebooks/07_ver2_handpicked_batch.ipynb}: per-performance combined
+timeline/ranking figures and final song-level and chunk-level confusion matrices.
+\end{itemize}
+For successful windows with real durations $d_j$, keep the same overall ranking:
+\[
+\overline p_c=\frac{\sum_j d_jp_{j,c}}{\sum_j d_j}.
+\]
+This reduces padded-edge influence, not overlap correlation. A selected interactive
+clip instead has one prediction and no whole-recording score average; its Sa still
+comes from the full recording. A supplied short file has only its own content
+available for tonic estimation.
+
+Batch ground truth is the first raag folder below the test root. Preserve the
+existing spelling mappings, including \texttt{sree} to Shree, while keeping unknown
+labels separate. In each raw-count confusion matrix,
+$C_{ij}=\sum_n\mathbf 1[y_n=i\wedge\widehat y_n=j]$.
+The song matrix counts one final argmax per recording. The chunk matrix counts
+every successful window's argmax once, including padded edges, against the parent
+folder label. Exclusions are reported; failed recordings receive error figures.
+PNG reports are saved under \path{outputs/ver2/handpicked}. Matrix cells reuse
+retained labels and do not repeat inference.
+
+\section{Verification and limitations}
+Synthetic-audio tests verify one complete-recording estimator call, identical Sa
+across all windows, tails and padding, no per-window fallback after a global
+failure, versioned cache/checkpoint isolation, identical model architecture and
+hyperparameters, and fixed tonic during interactive selections. Notebook code is
+validated without running full-dataset inference. Dummy checkpoint round trips do
+not train the model. Verification results are recorded in
+\path{docs/ver2_verification.md}.
+
+Full-recording estimation eliminates changes caused by separately selecting Sa
+for adjacent windows. It does not prove the selected Sa is correct. Octave and
+non-octave mistakes can now misalign an entire recording consistently. The fixed
+reference assumes tonic is stable; medleys or deliberate tonic changes violate
+that assumption. Timbre, accompaniment, and artist shortcuts can still dominate
+classification. More overlapping windows do not create independent performers.
+Scores are not calibrated probabilities, and unknown-raag rejection is absent.
+Full preparation, training, and external accuracy evaluation are deliberately
+deferred until the expanded datasets are supplied.
+
+\begin{thebibliography}{9}
+\bibitem{tonic} J. Salamon, S. Gulati, and X. Serra.
+\emph{A Multipitch Approach to Tonic Identification in Indian Classical Music}.
+ISMIR, 2012.
+\bibitem{essentia} Essentia. \emph{TonicIndianArtMusic algorithm reference}.
+\url{https://essentia.upf.edu/reference/std_TonicIndianArtMusic.html}.
+\end{thebibliography}
+\end{document}

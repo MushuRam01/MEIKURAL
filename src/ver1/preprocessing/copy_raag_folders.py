@@ -110,6 +110,33 @@ def plan_copies(source, destination, names):
     return planned
 
 
+def copy_folders(planned, names, dry_run=False):
+    """Execute a validated plan; shared by both versioned dataset selectors."""
+    copied = skipped = 0
+    for name, source, target in planned:
+        if target.exists():
+            print(f"SKIP (identical): {target}")
+            skipped += 1
+        elif dry_run:
+            print(f"WOULD COPY: {source}\n         -> {target}")
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            # Publish a complete folder only; failed copies leave no partial target.
+            with tempfile.TemporaryDirectory(prefix=".copy-", dir=target.parent) as temporary:
+                staged = Path(temporary) / "recording"
+                shutil.copytree(source, staged)
+                staged.rename(target)
+            print(f"COPIED: {target}")
+            copied += 1
+    counts = Counter(name for name, _, _ in planned)
+    print("\nSelected recording folders:")
+    for name in names:
+        print(f"  {name}: {counts[name]}")
+    print(f"Total: {len(planned)} | copied: {copied} | already present: {skipped}")
+    if dry_run:
+        print("Dry run only; no directories or audio files were created.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--raag-list", type=Path, default=ROOT / "docs/raag_list.txt")
@@ -120,29 +147,7 @@ def main():
     try:
         names = read_raag_list(args.raag_list.resolve())
         planned = plan_copies(args.source.resolve(), args.destination.resolve(), names)
-        copied = skipped = 0
-        for name, source, target in planned:
-            if target.exists():
-                print(f"SKIP (identical): {target}")
-                skipped += 1
-            elif args.dry_run:
-                print(f"WOULD COPY: {source}\n         -> {target}")
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                # Publish a complete folder only; failed copies leave no partial target.
-                with tempfile.TemporaryDirectory(prefix=".copy-", dir=target.parent) as temporary:
-                    staged = Path(temporary) / "recording"
-                    shutil.copytree(source, staged)
-                    staged.rename(target)
-                print(f"COPIED: {target}")
-                copied += 1
-        counts = Counter(name for name, _, _ in planned)
-        print("\nSelected recording folders:")
-        for name in names:
-            print(f"  {name}: {counts[name]}")
-        print(f"Total: {len(planned)} | copied: {copied} | already present: {skipped}")
-        if args.dry_run:
-            print("Dry run only; no directories or audio files were created.")
+        copy_folders(planned, names, args.dry_run)
     except (OSError, ValueError) as error:
         parser.exit(1, f"Error: {error}\n")
 

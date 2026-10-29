@@ -1,0 +1,72 @@
+% Generated from config.json; do not edit numerical defaults here.
+\subsection{Configured settings}
+\begin{longtable}{p{0.49\linewidth}p{0.44\linewidth}}
+\textbf{Setting} & \textbf{Value} \\\hline\endhead
+paths.dataset & "data/ver2/set" \\
+paths.features & "data/ver2/features" \\
+paths.run & "models/ver2" \\
+classes & Shree, Jog, Miyan Malhar, Lalit, Todi, Marwa, Bhairavi \\
+audio.sample\_rate & 22050 \\
+audio.window\_seconds & 30 \\
+audio.stride\_seconds & 15 \\
+audio.first\_start\_seconds & -15 \\
+audio.rms\_dbfs & -20 \\
+audio.max\_gain\_db & 20 \\
+audio.peak\_ceiling & 0.99 \\
+audio.silence\_rms & 1e-05 \\
+audio.decode\_block\_samples & 65536 \\
+tonic.sampleRate & 44100 \\
+tonic.minTonicFrequency & 65 \\
+tonic.maxTonicFrequency & 500 \\
+tonic.frameSize & 2048 \\
+tonic.hopSize & 512 \\
+tonic.binResolution & 10 \\
+tonic.numberHarmonics & 20 \\
+tonic.harmonicWeight & 0.85 \\
+tonic.magnitudeCompression & 1 \\
+tonic.magnitudeThreshold & 40 \\
+tonic.numberSaliencePeaks & 5 \\
+tonic.referenceFrequency & 55 \\
+spectrogram.n\_fft & 8192 \\
+spectrogram.win\_length & 8192 \\
+spectrogram.hop\_length & 512 \\
+spectrogram.window & "hann" \\
+spectrogram.center & true \\
+spectrogram.min\_cents & -1200 \\
+spectrogram.max\_cents\_exclusive & 4800 \\
+spectrogram.step\_cents & 25 \\
+spectrogram.dynamic\_range\_db & 80 \\
+spectrogram.epsilon & 1e-12 \\
+model.channels & [16, 32, 64] \\
+model.kernels & [[3, 7], [5, 5], [3, 3]] \\
+model.pool & [2, 4] \\
+model.adaptive\_pool & [12, 1] \\
+model.dropout & 0.25 \\
+training.device & "cuda" \\
+training.epochs & 30 \\
+training.batch\_size & 8 \\
+training.learning\_rate & 0.001 \\
+training.weight\_decay & 0.0001 \\
+training.betas & [0.9, 0.999] \\
+training.epsilon & 1e-08 \\
+training.seed & 42 \\
+training.workers & 0 \\
+inference.batch\_size & 8 \\
+preprocessing.version & 2 \\
+preprocessing.tonic\_scope & "recording" \\
+\end{longtable}
+\subsection{Derived CNN dimensions}
+Feature shape: (240, 1292). Trainable parameters: 37,063.
+\begin{longtable}{llll}
+\textbf{Layer} & \textbf{Output (C,H,W)} & \textbf{Parameters} & \textbf{RF (H,W)} \\\hline\endhead
+Input & 1 x 240 x 1292 & 0 & 1 x 1 \\
+Conv2d 1 & 16 x 240 x 1292 & 352 & 3 x 7 \\
+MaxPool2d 1 & 16 x 120 x 323 & 0 & 4 x 10 \\
+Conv2d 2 & 32 x 120 x 323 & 12,832 & 12 x 26 \\
+MaxPool2d 2 & 32 x 60 x 80 & 0 & 14 x 38 \\
+Conv2d 3 & 64 x 60 x 80 & 18,496 & 22 x 70 \\
+MaxPool2d 3 & 64 x 30 x 20 & 0 & 26 x 118 \\
+AdaptiveAvgPool2d & 64 x 12 x 1 & 0 & aggregated \\
+Flatten / Dropout & 768 & 0 & aggregated \\
+Linear & 7 & 5,383 & aggregated \\
+\end{longtable}
